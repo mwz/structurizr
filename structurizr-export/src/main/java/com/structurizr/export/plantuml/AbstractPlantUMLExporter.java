@@ -4,18 +4,20 @@ import com.structurizr.export.AbstractDiagramExporter;
 import com.structurizr.export.Diagram;
 import com.structurizr.export.IndentingWriter;
 import com.structurizr.model.*;
+import com.structurizr.util.ImageUtils;
 import com.structurizr.util.StringUtils;
 import com.structurizr.view.*;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import javax.imageio.IIOException;
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.net.URL;
 import java.util.*;
 
 import static java.lang.String.format;
 
 public abstract class AbstractPlantUMLExporter extends AbstractDiagramExporter {
+
+    private static final Log log = LogFactory.getLog(AbstractPlantUMLExporter.class);
 
     protected static final int DEFAULT_FONT_SIZE = 24;
 
@@ -30,6 +32,19 @@ public abstract class AbstractPlantUMLExporter extends AbstractDiagramExporter {
     public static final String DIAGRAM_DESCRIPTION_TAG = "Diagram:Description";
 
     private final Map<String, String> skinParams = new LinkedHashMap<>();
+    private final Map<Icon, String> icons = new HashMap<>();
+    private boolean preserveSvgIcons = false;
+
+    /**
+     * Selects whether SVG icons are preserved as vectors.
+     * The default is false, converting icons to PNG so they appear in both PNG and SVG diagrams.
+     *
+     * @param preserveSvgIcons true to preserve vector icons for PlantUML SVG output
+     */
+    public void setPreserveSvgIcons(boolean preserveSvgIcons) {
+        this.preserveSvgIcons = preserveSvgIcons;
+        icons.clear();
+    }
 
     protected Map<String, String> getSkinParams() {
         return skinParams;
@@ -187,6 +202,7 @@ public abstract class AbstractPlantUMLExporter extends AbstractDiagramExporter {
 
     @Override
     protected void writeHeader(ModelView view, IndentingWriter writer) {
+        icons.clear();
         writer.writeLine("@startuml");
 
         if (includeTitle(view)) {
@@ -381,28 +397,35 @@ public abstract class AbstractPlantUMLExporter extends AbstractDiagramExporter {
     }
 
     protected boolean isSupportedIcon(String icon) {
-        return !StringUtils.isNullOrEmpty(icon) && icon.startsWith("http");
+        return !StringUtils.isNullOrEmpty(icon) && (icon.startsWith("http") || ImageUtils.isSupportedDataUri(icon));
+    }
+
+    protected String plantUMLImage(String icon, int maxIconSize) {
+        return icons.computeIfAbsent(new Icon(icon, maxIconSize), key -> {
+            String reference;
+            try {
+                reference = preserveSvgIcons ? PlantUMLImage.reference(icon) : PlantUMLImage.rasterise(icon, maxIconSize);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Could not prepare icon for PlantUML export", e);
+            }
+            return "img:" + reference + "{scale=" + calculateIconScale(reference, maxIconSize) + "}";
+        });
     }
 
     protected double calculateIconScale(String iconUrl, int maxIconSize) {
-        double scale = 0.5;
-
         try {
-            URL url = new URL(iconUrl);
-            BufferedImage bi = ImageIO.read(url);
-
-            int width = bi.getWidth();
-            int height = bi.getHeight();
-
-            scale = ((double)maxIconSize) / Math.max(width, height);
+            return PlantUMLImage.scale(iconUrl, maxIconSize);
         } catch (UnsupportedOperationException | UnsatisfiedLinkError | IIOException e) {
             // This is a known issue on native builds since AWT packages aren't available.
             // So we just swallow the error and use the default scale
         } catch (Exception e) {
-            e.printStackTrace();
+            log.warn("Could not determine icon dimensions; using scale 0.5 (" + e.getClass().getSimpleName() + ")");
         }
 
-        return scale;
+        return 0.5;
+    }
+
+    private record Icon(String reference, int maxSize) {
     }
 
 }

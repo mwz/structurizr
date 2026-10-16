@@ -191,8 +191,7 @@ public class C4PlantUMLExporter extends AbstractPlantUMLExporter {
 
                     String sprite = "";
                     if (isSupportedIcon(elementStyle.getIcon())) {
-                        double scale = calculateIconScale(elementStyle.getIcon(), MAX_ICON_SIZE);
-                        sprite = "img:" + elementStyle.getIcon() + "{scale=" + scale + "}";
+                        sprite = plantUMLImage(elementStyle.getIcon(), MAX_ICON_SIZE);
                     }
                     sprite = elementStyle.getProperties().getOrDefault(C4PLANTUML_SPRITE, sprite);
 

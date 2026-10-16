@@ -12,6 +12,16 @@
 
   <dependencies>
     <dependency>
+      <groupId>org.apache.xmlgraphics</groupId>
+      <artifactId>batik-transcoder</artifactId>
+      <version>1.19</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.xmlgraphics</groupId>
+      <artifactId>batik-codec</artifactId>
+      <version>1.19</version>
+    </dependency>
+    <dependency>
       <groupId>com.structurizr</groupId>
       <artifactId>structurizr-core</artifactId>
       <version>${project.version}</version>

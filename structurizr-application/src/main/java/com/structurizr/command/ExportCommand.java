@@ -3,6 +3,7 @@ package com.structurizr.command;
 import com.structurizr.Workspace;
 import com.structurizr.export.*;
 import com.structurizr.export.mermaid.MermaidDiagramExporter;
+import com.structurizr.export.plantuml.AbstractPlantUMLExporter;
 import com.structurizr.export.plantuml.C4PlantUMLExporter;
 import com.structurizr.export.plantuml.StructurizrPlantUMLExporter;
 import com.structurizr.export.websequencediagrams.WebSequenceDiagramsExporter;
@@ -94,6 +95,9 @@ public class ExportCommand extends AbstractCommand {
         option.setRequired(false);
         options.addOption(option);
 
+        option = new Option("preserveSvgIcons", false, "Keep SVG icons as vectors (PlantUML SVG output only)");
+        options.addOption(option);
+
         CommandLineParser commandLineParser = new DefaultParser();
 
         String workspacePathAsString = null;
@@ -103,6 +107,7 @@ public class ExportCommand extends AbstractCommand {
         String mode = "";
         String url = null;
         boolean animation = false;
+        boolean preserveSvgIcons = false;
         String outputPath = null;
 
         try {
@@ -113,10 +118,16 @@ public class ExportCommand extends AbstractCommand {
             mode = cmd.getOptionValue("mode", "light").toLowerCase();
             url = cmd.getOptionValue("url");
             animation = Boolean.parseBoolean(cmd.getOptionValue("animation"));
+            preserveSvgIcons = cmd.hasOption("preserveSvgIcons");
             outputPath = cmd.getOptionValue("output");
         } catch (ParseException e) {
             log.error(e.getMessage());
             showHelp(options);
+            return false;
+        }
+
+        if (preserveSvgIcons && !(format.equals(PLANTUML_FORMAT) || format.startsWith(PLANTUML_FORMAT + "/") || format.startsWith(PLANTUML_FORMAT + "-"))) {
+            log.error("The preserveSvgIcons option requires a PlantUML export format");
             return false;
         }
 
@@ -218,6 +229,10 @@ public class ExportCommand extends AbstractCommand {
                 log.info("Unknown export format: " + format);
             } else {
                 log.info("Exporting with " + exporter.getClass().getSimpleName());
+
+                if (exporter instanceof AbstractPlantUMLExporter plantUMLExporter) {
+                    plantUMLExporter.setPreserveSvgIcons(preserveSvgIcons);
+                }
 
                 if (exporter instanceof DiagramExporter) {
                     HttpClient httpClient = new HttpClient();
