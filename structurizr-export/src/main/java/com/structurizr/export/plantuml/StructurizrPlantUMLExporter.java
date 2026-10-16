@@ -131,7 +131,7 @@ public class StructurizrPlantUMLExporter extends AbstractPlantUMLExporter {
         if (!renderAsSequenceDiagram(view)) {
             String icon = elementStyle.getIcon();
             if (!StringUtils.isNullOrEmpty(icon)) {
-                icon = "\\n\\n<" + plantUMLImage(icon, elementStyle.getFontSize() * MAX_ICON_SIZE_RATIO) + ">";
+                icon = "\\n\\n<" + plantUMLImage(icon, elementStyle.getFontSize() * MAX_ICON_SIZE_RATIO, "Group:" + group) + ">";
             } else {
                 icon = "";
             }
@@ -249,7 +249,7 @@ public class StructurizrPlantUMLExporter extends AbstractPlantUMLExporter {
 
         String icon = "";
         if (isSupportedIcon(elementStyle.getIcon())) {
-            icon = "\\n\\n<" + plantUMLImage(elementStyle.getIcon(), elementStyle.getFontSize() * MAX_ICON_SIZE_RATIO) + ">";
+            icon = "\\n\\n<" + plantUMLImage(elementStyle.getIcon(), elementStyle.getFontSize() * MAX_ICON_SIZE_RATIO, elementStyle.getTag()) + ">";
         }
 
         String url = deploymentNode.getUrl();
@@ -395,7 +395,7 @@ public class StructurizrPlantUMLExporter extends AbstractPlantUMLExporter {
             }
 
             if (isSupportedIcon(elementStyle.getIcon())) {
-                icon = "\\n\\n<" + plantUMLImage(elementStyle.getIcon(), elementStyle.getFontSize() * MAX_ICON_SIZE_RATIO) + ">";
+                icon = "\\n\\n<" + plantUMLImage(elementStyle.getIcon(), elementStyle.getFontSize() * MAX_ICON_SIZE_RATIO, elementStyle.getTag()) + ">";
             }
 
             String classSelector = plantUMLElementStyle.getClassSelector();
@@ -505,7 +505,7 @@ public class StructurizrPlantUMLExporter extends AbstractPlantUMLExporter {
 
             String icon = "";
             if (isSupportedIcon(style.getIcon())) {
-                icon = "\\n\\n<" + plantUMLImage(style.getIcon(), style.getFontSize() * MAX_ICON_SIZE_RATIO) + ">";
+                icon = "\\n\\n<" + plantUMLImage(style.getIcon(), style.getFontSize() * MAX_ICON_SIZE_RATIO, style.getName()) + ">";
             }
 
             writer.writeLine(format("rectangle \"==%s%s\" <<%s>>",
@@ -526,7 +526,7 @@ public class StructurizrPlantUMLExporter extends AbstractPlantUMLExporter {
 
             String icon = "";
             if (isSupportedIcon(style.getIcon())) {
-                icon = "\\n\\n<" + plantUMLImage(style.getIcon(), style.getFontSize() * MAX_ICON_SIZE_RATIO) + ">";
+                icon = "\\n\\n<" + plantUMLImage(style.getIcon(), style.getFontSize() * MAX_ICON_SIZE_RATIO, style.getName()) + ">";
             }
 
             writer.writeLine(format("%s \"==%s%s\" <<%s>>",

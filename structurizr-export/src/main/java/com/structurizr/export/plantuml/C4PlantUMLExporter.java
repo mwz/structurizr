@@ -189,11 +189,11 @@ public class C4PlantUMLExporter extends AbstractPlantUMLExporter {
                     ElementStyle elementStyle = elementStyles.get(tagList);
                     tagList = tagList.replaceFirst("Element,", "");
 
-                    String sprite = "";
-                    if (isSupportedIcon(elementStyle.getIcon())) {
-                        sprite = plantUMLImage(elementStyle.getIcon(), MAX_ICON_SIZE);
+                    String sprite = elementStyle.getProperties().get(C4PLANTUML_SPRITE);
+                    if (sprite == null) {
+                        sprite = isSupportedIcon(elementStyle.getIcon())
+                                ? plantUMLImage(elementStyle.getIcon(), MAX_ICON_SIZE, elementStyle.getTag()) : "";
                     }
-                    sprite = elementStyle.getProperties().getOrDefault(C4PLANTUML_SPRITE, sprite);
 
                     int borderThickness = 1;
                     if (elementStyle.getStrokeWidth() != null) {

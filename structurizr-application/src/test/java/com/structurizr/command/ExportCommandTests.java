@@ -1,9 +1,11 @@
 package com.structurizr.command;
 
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -74,6 +76,50 @@ public class ExportCommandTests {
     @Test
     void preserveSvgIconsRequiresPlantUML() throws Exception {
         assertFalse(new ExportCommand().run("-f", "mermaid", "-preserveSvgIcons"));
+    }
+
+    @Test
+    void unavailableIconDoesNotPreventAnyDiagramFromBeingWritten() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/icon.png", exchange -> {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            Path workspace = directory.resolve("workspace.dsl");
+            Files.writeString(workspace, """
+                    workspace {
+                        model {
+                            s = softwareSystem "System"
+                        }
+                        views {
+                            systemLandscape landscape {
+                                include *
+                            }
+                            systemContext s context {
+                                include *
+                            }
+                            styles {
+                                element "Software System" {
+                                    icon http://127.0.0.1:%d/icon.png
+                                }
+                            }
+                            properties {
+                                c4plantuml.tags true
+                            }
+                        }
+                    }
+                    """.formatted(server.getAddress().getPort()));
+            for (String format : new String[] {"plantuml", "plantuml/c4plantuml"}) {
+                Path output = directory.resolve(format.replace('/', '-'));
+                assertTrue(new ExportCommand().run("-w", workspace.toString(), "-f", format, "-o", output.toString()));
+                assertTrue(Files.exists(output.resolve("structurizr-landscape.puml")));
+                assertTrue(Files.exists(output.resolve("structurizr-context.puml")));
+            }
+        } finally {
+            server.stop(0);
+        }
     }
 
 }

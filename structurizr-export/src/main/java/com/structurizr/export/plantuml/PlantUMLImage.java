@@ -4,6 +4,7 @@ import com.structurizr.util.ImageUtils;
 import org.apache.batik.transcoder.TranscoderInput;
 import org.apache.batik.transcoder.TranscoderOutput;
 import org.apache.batik.transcoder.image.PNGTranscoder;
+import org.w3c.dom.Document;
 
 import javax.imageio.ImageIO;
 import javax.xml.XMLConstants;
@@ -12,11 +13,16 @@ import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringWriter;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -43,12 +49,62 @@ final class PlantUMLImage {
     }
 
     static String rasterise(String icon, int maxSize) throws Exception {
+        return prepare(icon, maxSize, false).reference();
+    }
+
+    static Prepared prepare(String icon, int maxSize, boolean preserveSvg) throws Exception {
         byte[] bytes = read(icon);
         Dimensions dimensions = dimensions(bytes);
         if (!dimensions.svg()) {
-            return reference(icon);
+            return new Prepared(reference(icon), maxSize / Math.max(dimensions.width(), dimensions.height()));
         }
 
+        Document document = svgDocument(bytes);
+        var root = document.getDocumentElement();
+        // Batik does not support Q, and PlantUML treats physical units as pixels.
+        root.setAttribute("width", Double.toString(dimensions.width()));
+        root.setAttribute("height", Double.toString(dimensions.height()));
+        double scale = maxSize * 4.0 / Math.max(dimensions.width(), dimensions.height());
+        if (preserveSvg) {
+            // PlantUML replaces the outer SVG element and reads integer dimensions.
+            // A pixel-sized wrapper keeps the original viewBox, units and root styles intact.
+            var wrapper = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            String width = Long.toString((long) Math.ceil(dimensions.width() * scale));
+            String height = Long.toString((long) Math.ceil(dimensions.height() * scale));
+            wrapper.setAttribute("width", width);
+            wrapper.setAttribute("height", height);
+            wrapper.setAttribute("viewBox", "0 0 " + width + " " + height);
+            var group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            var scaledGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            scaledGroup.setAttribute("transform", "scale(" + scale + ")");
+            document.replaceChild(wrapper, root);
+            wrapper.appendChild(group);
+            // PlantUML adds a transform to the first group; leave that group untransformed.
+            group.appendChild(scaledGroup);
+            scaledGroup.appendChild(root);
+            TransformerFactory factory = TransformerFactory.newInstance();
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+            var transformer = factory.newTransformer();
+            transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+            StringWriter output = new StringWriter();
+            transformer.transform(new DOMSource(wrapper), new StreamResult(output));
+            return new Prepared(ImageUtils.getSvgAsDataUri(output.toString()), 0.25);
+        }
+
+        PNGTranscoder transcoder = new PNGTranscoder();
+        transcoder.addTranscodingHint(PNGTranscoder.KEY_EXECUTE_ONLOAD, false);
+        transcoder.addTranscodingHint(PNGTranscoder.KEY_ALLOW_EXTERNAL_RESOURCES, false);
+        // Render at four times the display size for sharper icons, preserving transparency and aspect ratio.
+        transcoder.addTranscodingHint(PNGTranscoder.KEY_WIDTH, (float) (dimensions.width() * scale));
+        transcoder.addTranscodingHint(PNGTranscoder.KEY_HEIGHT, (float) (dimensions.height() * scale));
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        transcoder.transcode(new TranscoderInput(document), new TranscoderOutput(output));
+        return new Prepared(ImageUtils.getPngAsDataUri(output.toByteArray()), 0.25);
+    }
+
+    private static Document svgDocument(byte[] bytes) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
@@ -59,18 +115,7 @@ final class PlantUMLImage {
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
         factory.setXIncludeAware(false);
         factory.setExpandEntityReferences(false);
-        var document = factory.newDocumentBuilder().parse(new ByteArrayInputStream(bytes));
-
-        PNGTranscoder transcoder = new PNGTranscoder();
-        transcoder.addTranscodingHint(PNGTranscoder.KEY_EXECUTE_ONLOAD, false);
-        transcoder.addTranscodingHint(PNGTranscoder.KEY_ALLOW_EXTERNAL_RESOURCES, false);
-        // Render at four times the display size for sharper icons, preserving transparency and aspect ratio.
-        double scale = maxSize * 4.0 / Math.max(dimensions.width(), dimensions.height());
-        transcoder.addTranscodingHint(PNGTranscoder.KEY_WIDTH, (float) (dimensions.width() * scale));
-        transcoder.addTranscodingHint(PNGTranscoder.KEY_HEIGHT, (float) (dimensions.height() * scale));
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        transcoder.transcode(new TranscoderInput(document), new TranscoderOutput(output));
-        return ImageUtils.getPngAsDataUri(output.toByteArray());
+        return factory.newDocumentBuilder().parse(new ByteArrayInputStream(bytes));
     }
 
     private static byte[] read(String icon) throws IOException {
@@ -148,8 +193,12 @@ final class PlantUMLImage {
         if (comma < 0) {
             throw new IllegalArgumentException("Image data URI has no content separator");
         }
-        // Unlike form encoding, a literal '+' in a data URI must remain a '+'.
-        String content = URLDecoder.decode(icon.substring(comma + 1).replace("+", "%2B"), StandardCharsets.UTF_8);
+        String content = icon.substring(comma + 1);
+        // Raw XML can contain literal '%' and '+' characters, including text such as "50%25".
+        // Encoded XML starts with an encoded '<'; decode that form exactly once.
+        if (!content.stripLeading().startsWith("<")) {
+            content = URLDecoder.decode(content.replace("+", "%2B"), StandardCharsets.UTF_8);
+        }
         return isBase64(icon) ? Base64.getDecoder().decode(content) : content.getBytes(StandardCharsets.UTF_8);
     }
 
@@ -180,6 +229,9 @@ final class PlantUMLImage {
     }
 
     private record Dimensions(double width, double height, boolean svg) {
+    }
+
+    record Prepared(String reference, double scale) {
     }
 
 }

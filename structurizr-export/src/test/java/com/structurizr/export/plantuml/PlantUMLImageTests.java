@@ -62,9 +62,15 @@ class PlantUMLImageTests {
         var c4Exporter = new C4PlantUMLExporter();
         c4Exporter.setPreserveSvgIcons(true);
         Diagram diagram = structurizrExporter.export(view);
-        assertTrue(diagram.getDefinition().contains("<img:" + reference + "{scale=0.6}>"));
-        assertTrue(diagram.getLegend().getDefinition().contains("<img:" + reference + "{scale=0.6}>"));
-        assertTrue(c4Exporter.export(view).getDefinition().contains("$sprite=\"img:" + reference + "{scale=0.25}\""));
+        if (icon.startsWith(ImageUtils.DATA_URI_IMAGE_SVG)) {
+            assertTrue(diagram.getDefinition().contains("<img:data:image/svg+xml;base64,"));
+            assertTrue(diagram.getLegend().getDefinition().contains("<img:data:image/svg+xml;base64,"));
+            assertTrue(c4Exporter.export(view).getDefinition().contains("$sprite=\"img:data:image/svg+xml;base64,"));
+        } else {
+            assertTrue(diagram.getDefinition().contains("<img:" + reference + "{scale=0.6}>"));
+            assertTrue(diagram.getLegend().getDefinition().contains("<img:" + reference + "{scale=0.6}>"));
+            assertTrue(c4Exporter.export(view).getDefinition().contains("$sprite=\"img:" + reference + "{scale=0.25}\""));
+        }
     }
 
     @ParameterizedTest
@@ -97,7 +103,14 @@ class PlantUMLImageTests {
             "width='6pc' height='50.8Q'|0.625"
     })
     void svgDimensionsSupportUnitsAndViewBox(String attributes, double scale) throws Exception {
-        assertEquals(scale, PlantUMLImage.scale(ImageUtils.getSvgAsDataUri("<svg " + attributes + "/>"), 60), 0.00001);
+        String svg = "<svg xmlns='http://www.w3.org/2000/svg' " + attributes
+                + "><rect x='-1000' y='-1000' width='2000' height='2000' fill='red'/></svg>";
+        assertEquals(scale, PlantUMLImage.scale(ImageUtils.getSvgAsDataUri(svg), 60), 0.00001);
+        String reference = PlantUMLImage.rasterise(ImageUtils.getSvgAsDataUri(svg), 60);
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(reference.split(",", 2)[1])));
+        assertEquals(240, image.getWidth());
+        assertEquals(120, image.getHeight());
+        assertEquals(0xffff0000, image.getRGB(120, 60));
     }
 
     @Test
@@ -105,6 +118,20 @@ class PlantUMLImageTests {
         String svg = SVG.replace("</svg>", "<text>A+B</text></svg>");
         String reference = PlantUMLImage.reference("data:image/svg+xml;utf8," + svg);
         assertEquals(svg, new String(Base64.getDecoder().decode(reference.split(",", 2)[1]), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void rawAndEncodedPercentagesAreDecodedExactlyOnce() throws Exception {
+        String svg = SVG.replace("width=\"120\" height=\"60\"", "width=\"100%\" height=\"100%\" viewBox=\"0 0 120 60\"")
+                .replace("</svg>", "<!-- A+B, 100%, 50%25 and %3C --></svg>");
+        String encoded = java.net.URLEncoder.encode(svg, StandardCharsets.UTF_8).replace("+", "%20");
+        for (String payload : new String[] {svg, encoded}) {
+            String icon = "data:image/svg+xml;utf8," + payload;
+            String reference = PlantUMLImage.reference(icon);
+            assertEquals(svg, new String(Base64.getDecoder().decode(reference.split(",", 2)[1]), StandardCharsets.UTF_8));
+            assertTrue(PlantUMLImage.rasterise(icon, 60).startsWith(ImageUtils.DATA_URI_IMAGE_PNG));
+            assertTrue(PlantUMLImage.prepare(icon, 60, true).reference().startsWith(ImageUtils.DATA_URI_IMAGE_SVG));
+        }
     }
 
     @Test

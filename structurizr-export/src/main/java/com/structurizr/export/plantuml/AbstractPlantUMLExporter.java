@@ -11,6 +11,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import javax.imageio.IIOException;
+import java.awt.AWTError;
+import java.io.IOException;
 import java.util.*;
 
 import static java.lang.String.format;
@@ -401,21 +403,31 @@ public abstract class AbstractPlantUMLExporter extends AbstractDiagramExporter {
     }
 
     protected String plantUMLImage(String icon, int maxIconSize) {
+        return plantUMLImage(icon, maxIconSize, "icon " + Integer.toHexString(icon.hashCode()));
+    }
+
+    protected String plantUMLImage(String icon, int maxIconSize, String styleTag) {
         return icons.computeIfAbsent(new Icon(icon, maxIconSize), key -> {
-            String reference;
+            PlantUMLImage.Prepared image;
+            String context = "style '" + styleTag.replaceAll("[\\r\\n]", " ") + "'";
             try {
-                reference = preserveSvgIcons ? PlantUMLImage.reference(icon) : PlantUMLImage.rasterise(icon, maxIconSize);
+                image = PlantUMLImage.prepare(icon, maxIconSize, preserveSvgIcons);
+            } catch (IOException | UnsupportedOperationException | UnsatisfiedLinkError | NoClassDefFoundError | AWTError e) {
+                // Keep exports usable offline and on native builds without AWT support.
+                log.warn("Could not load the icon for " + context + ". Keeping its reference at scale 0.5 ("
+                        + e.getClass().getSimpleName() + ").");
+                image = new PlantUMLImage.Prepared(PlantUMLImage.reference(icon), 0.5);
             } catch (Exception e) {
-                throw new IllegalArgumentException("Could not prepare icon for PlantUML export", e);
+                throw new IllegalArgumentException("Could not prepare the icon for " + context + " for PlantUML export", e);
             }
-            return "img:" + reference + "{scale=" + calculateIconScale(reference, maxIconSize) + "}";
+            return "img:" + image.reference() + "{scale=" + image.scale() + "}";
         });
     }
 
     protected double calculateIconScale(String iconUrl, int maxIconSize) {
         try {
             return PlantUMLImage.scale(iconUrl, maxIconSize);
-        } catch (UnsupportedOperationException | UnsatisfiedLinkError | IIOException e) {
+        } catch (UnsupportedOperationException | UnsatisfiedLinkError | NoClassDefFoundError | AWTError | IIOException e) {
             // This is a known issue on native builds since AWT packages aren't available.
             // So we just swallow the error and use the default scale
         } catch (Exception e) {

@@ -12,6 +12,8 @@ The exporters convert SVG icons to embedded PNG images by default.
 The PNG images retain transparency and aspect ratio, with four times the displayed width and height to support high-DPI PNG rendering.
 PNG and JPEG icons retain their original formats.
 Icons are prepared once per size within each diagram and reused in its legend.
+Image preparation reads each icon once and retains its dimensions, so remote PNG and JPEG icons do not require a second download.
+An explicit `c4plantuml.sprite` property takes precedence over the style icon.
 
 PlantUML 1.2026.5 preserves embedded SVG icons in SVG output but omits them from PNG output.
 The default conversion makes the icons visible in both output formats.
@@ -23,6 +25,14 @@ Java callers can use `exporter.setPreserveSvgIcons(true)` for the same result.
 This option applies to both PlantUML exporters and does not change the DSL.
 
 The exporters read SVG dimensions from `width`, `height`, or `viewBox`.
-SVG lengths can use pixels or absolute units such as `pt`, `mm`, and `in`.
+SVG root dimensions can use pixels or absolute units such as `pt`, `mm`, and `in`.
 Relative SVG lengths use the `viewBox` dimensions when available.
-SVG conversion disables scripts and external resources and reports an error if conversion fails.
+The exporters convert root dimensions to pixels before processing SVG icons, including lengths in `Q` (quarter-millimetres).
+Preserved SVG icons use an outer SVG element with dimensions in pixels, which protects the original `viewBox` and root styles during PlantUML rendering.
+SVG data URIs can contain Base64, raw XML, or percent-encoded XML.
+Raw XML retains literal percentage signs and plus signs.
+
+If an icon download fails or AWT image support is unavailable, export continues with the original reference at scale 0.5.
+A warning identifies the affected style, and the final renderer must load the original icon.
+SVG conversion disables scripts and external resources.
+Other conversion failures stop export with an error that identifies the affected style.
